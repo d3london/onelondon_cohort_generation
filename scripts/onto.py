@@ -152,8 +152,6 @@ class FHIRTerminologyClient:
         if bundle_response.status_code == 200:
             bundle = bundle_response.json()
 
-            print(bundle)
-
             # extract full url with id
             try:
                 full_url = bundle["entry"][0]["fullUrl"]
