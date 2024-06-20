@@ -51,7 +51,7 @@ if __name__ == "__main__":
     else:
         print("Failed to retrieve access token")
 
-def retrieve_concept_codes(access_token, value_set_id, endpoint='authoring'):
+def retrieve_concept_codes_from_id(access_token, value_set_id, endpoint='authoring'):
     """
     Retrieves a list of concept codes that are found in a value set
         access_token: OAuth2 token generated from a client ID and secret
@@ -72,7 +72,7 @@ def retrieve_concept_codes(access_token, value_set_id, endpoint='authoring'):
     
     response = requests.get(url, headers=headers)
     
-    # check response
+    # retrieve value set
     if response.status_code == 200:
         value_set = response.json()
         
@@ -84,4 +84,59 @@ def retrieve_concept_codes(access_token, value_set_id, endpoint='authoring'):
     else:
         print(f"Failed to retrieve data: {response.status_code} - {response.text}")
         return []
+
+def retrieve_concept_codes_from_desc(access_token, endpoint='authoring', query_type='url', query_value=''):
+    """
+    Retrieves a list of concept codes that are found in a value set, via either a FHIR url or value set name 
+        access_token: OAuth2 token generated from a client ID and secret
+        endpoint: default 'authoring', or 'production' (hardcoded for the OneLondon terminology server endpoints)
+        query_type: either 'url' or 'name'
+        query_value: corresponding FHIR url or name value
+    Returns a list of concept codes
+    """
+
+    endpoints = {
+        'authoring': 'https://ontology.onelondon.online/authoring/fhir/',
+        'production': 'https://ontology.onelondon.online/production1/fhir/'
+    }
     
+    if query_type == 'url':
+        query_url = f"{endpoints[endpoint]}ValueSet/?url={query_value}"
+    elif query_type == 'name':
+        query_url = f"{endpoints[endpoint]}ValueSet/?name={query_value}"
+    else:
+        raise ValueError("Invalid query_type. Use 'url' or 'name'.")
+
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+
+    # retrieve bundle metadata
+    bundle_response = requests.get(query_url, headers=headers)
+    
+    if bundle_response.status_code == 200:
+        bundle = bundle_response.json()
+        
+        # extract full url with id
+        try:
+            full_url = bundle['entry'][0]['fullUrl']
+            
+            # retrieve actual value set from full url
+            response = requests.get(full_url, headers=headers)
+            if response.status_code == 200:
+                value_set = response.json()
+                
+                # extract list of codes
+                concepts = value_set.get('compose', {}).get('include', [])[0].get('concept', [])
+                code_list = [item.get('code', 'no code listed') for item in concepts]
+                
+                return code_list
+            else:
+                print(f"Failed to retrieve data: {response.status_code} - {response.text}")
+                return []
+        except IndexError:
+            print("No entries found in bundle.")
+            return []
+    else:
+        print(f"Failed to retrieve bundle: {bundle_response.status_code} - {bundle_response.text}")
+        return []
