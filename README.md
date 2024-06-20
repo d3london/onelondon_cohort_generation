@@ -1,4 +1,4 @@
-# Example code for retrieving cohort definitions using the OneLondon terminology server
+# Retrieving cohort definitions using the OneLondon terminology server
 
 ### Setting up environmental variables
 Retrieving an access token requires a client ID and a secret that can be obtained from the OneLondon terminology server team. Prior to running these scripts, CLIENT_ID and CLIENT_SECRET must be set as environmental variables.
