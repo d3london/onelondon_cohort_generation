@@ -44,13 +44,6 @@ def get_access_token():
         print(f"Unable to request: {e}")
         return None
 
-if __name__ == "__main__":
-    token = get_access_token()
-    if token:
-        print(f"Access Token: {token}")
-    else:
-        print("Failed to retrieve access token")
-
 def retrieve_concept_codes_from_id(access_token, value_set_id, endpoint='authoring'):
     """
     Retrieves a list of concept codes that are found in a value set
