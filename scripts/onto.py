@@ -1,5 +1,6 @@
 import os
 import requests
+import json
 
 def get_access_token():
     """
@@ -49,3 +50,38 @@ if __name__ == "__main__":
         print(f"Access Token: {token}")
     else:
         print("Failed to retrieve access token")
+
+def retrieve_concept_codes(access_token, value_set_id, endpoint='authoring'):
+    """
+    Retrieves a list of concept codes that are found in a value set
+        access_token: OAuth2 token generated from a client ID and secret
+        value_set_id: id of the target FHIR value set
+        endpoint: default 'authoring', or 'production' (hardcoded for the OneLondon terminology server endpoints)
+    Returns a list of concept codes 
+    """
+    endpoints = {
+        'authoring': 'https://ontology.onelondon.online/authoring/fhir/',
+        'production': 'https://ontology.onelondon.online/production1/fhir/'
+    }
+    
+    url = f"{endpoints[endpoint]}ValueSet/{value_set_id}"
+    
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+    
+    response = requests.get(url, headers=headers)
+    
+    # check response
+    if response.status_code == 200:
+        value_set = response.json()
+        
+        # extract list of codes
+        concepts = value_set.get('compose', {}).get('include', [])[0].get('concept', [])
+        code_list = [item.get('code', 'no code listed') for item in concepts]
+        
+        return code_list
+    else:
+        print(f"Failed to retrieve data: {response.status_code} - {response.text}")
+        return []
+    
