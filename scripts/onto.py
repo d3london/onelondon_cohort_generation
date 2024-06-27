@@ -1,19 +1,21 @@
+import os
 import time
 from dataclasses import dataclass
 from functools import wraps
 from typing import Callable, Literal, Optional
-
 import requests
 
-# Endpoint url (see https://ontology.onelondon.online/)
+# Token endpoint url (see https://ontology.onelondon.online/)
 _ONELONDON_OPENID_ENDPOINT = "https://ontology.onelondon.online/authorisation/auth/realms/terminology/protocol/openid-connect/token"
 
+# Authoring and production endpoints url (see https://ontology.onelondon.online/)
+_ONELONDON_AUTHOR_ENDPOINT = "https://ontology.onelondon.online/authoring/fhir/"
+_ONELONDON_PROD_ENDPOINT = "https://ontology.onelondon.online/production1/fhir/"
 
 def auto_refresh_token(func) -> Callable:
     """
     This function decorator checks if the access token has expired and refreshes it if necessary.
     """
-
     @wraps(func)
     def wrap(self, *args, **kwargs):
         if time.time() > self._access_token_expire_time:
@@ -23,20 +25,13 @@ def auto_refresh_token(func) -> Callable:
 
     return wrap
 
-
-@dataclass
-class OneLondonEndpoints:
-    authoring: str = "https://ontology.onelondon.online/authoring/fhir/"
-    production: str = "https://ontology.onelondon.online/production1/fhir/"
-
-
 class FHIRTerminologyClient:
     """
     A client for querying FHIR terminology services, such as the OneLondon terminology server.
 
     Attributes:
-        client_id: client ID for the FHIR server
-        client_secret: client secret for the FHIR server
+        client_id: client ID for the FHIR server as environmental variable
+        client_secret: client secret for the FHIR server as environment variable
         endpoint: the endpoint URL for the FHIR server (default: OneLondon authoring endpoint)
         open_id_token_url: the URL for the OpenID token endpoint (default: OneLondon OpenID endpoint)
 
@@ -44,17 +39,24 @@ class FHIRTerminologyClient:
         retrieve_concept_codes_from_id: retrieves a list of concept codes from a value set ID
         retrieve_concept_codes_from_desc: retrieves a list of concept codes from a value set URL or name
     """
+    
+    # class level attribute
+    client_id = os.getenv("CLIENT_ID")
+    client_secret = os.getenv("CLIENT_SECRET")    
 
     def __init__(
         self,
-        client_id: str,
-        client_secret: str,
-        endpoint: str = OneLondonEndpoints.authoring,
+        endpoint_type: str = 'authoring',
         open_id_token_url: str = _ONELONDON_OPENID_ENDPOINT,
     ):
-        self.client_id: str = client_id
-        self.client_secret: str = client_secret
-        self.endpoint: str = endpoint
+                
+        if endpoint_type not in ['authoring', 'production']:
+            raise ValueError("Invalid endpoint_type. Use 'authoring' or 'production'.")
+
+        if endpoint_type == 'production':
+            self.endpoint = _ONELONDON_PROD_ENDPOINT
+        else:
+            self.endpoint = _ONELONDON_AUTHOR_ENDPOINT
 
         self._open_id_token_url: str = open_id_token_url
         self._access_token: str
@@ -66,13 +68,13 @@ class FHIRTerminologyClient:
         self._access_token, self._access_token_expire_time = self._get_access_token()
 
     def _get_access_token(self) -> tuple[str, int]:
-
         # define request contents
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
         data = {
             "grant_type": "client_credentials",
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
+            "client_id": FHIRTerminologyClient.client_id,
+            "client_secret": FHIRTerminologyClient.client_secret,
         }
 
         # Request access token
