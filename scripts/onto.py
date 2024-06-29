@@ -1,5 +1,6 @@
 import os
 import time
+import pandas as pd
 from dataclasses import dataclass
 from functools import wraps
 from typing import Callable, Literal, Optional
@@ -37,7 +38,7 @@ class FHIRTerminologyClient:
 
     Methods:
         retrieve_concept_codes_from_id: retrieves a list of concept codes from a value set ID
-        retrieve_concept_codes_from_desc: retrieves a list of concept codes from a value set URL or name
+        retrieve_concept_codes_from_url: retrieves a list of concept codes from a value set URL
     """
     
     # class level attribute
@@ -130,60 +131,64 @@ class FHIRTerminologyClient:
             return []
 
     @auto_refresh_token
-    def retrieve_concept_codes_from_desc(
-        self, query_value: str, query_type: Literal["url", "name"] = "url"
-    ) -> list[Optional[str]]:
+    def retrieve_concept_codes_from_url(self, url: str) -> list[Optional[str]]:
         """
-        Retrieves a list of concept codes that are found in a value set, via either a FHIR url or value set name
-            query_type: either 'url' or 'name'
-            query_value: corresponding FHIR url or name value
+        Retrieves a list of concept codes that are found in a value set via a FHIR url
+            url: contains the FHIR url
         Returns a list of concept codes
         """
 
-        # Guard against invalid query types
-        if query_type not in ["url", "name"]:
-            raise ValueError("Invalid query_type. Use 'url' or 'name'.")
-
-        query_url = f"{self.endpoint}ValueSet/?{query_type}={query_value}"
+        query_url = f"{self.endpoint}ValueSet/$expand?url={url}"
 
         headers = {"Authorization": f"Bearer {self._access_token}"}
 
-        # retrieve bundle metadata
-        bundle_response = requests.get(query_url, headers=headers)
+        # retrieve value_set
+        value_response = requests.get(query_url, headers=headers)
 
-        if bundle_response.status_code == 200:
-            bundle = bundle_response.json()
+        if value_response.status_code == 200:
+            value_set = value_response.json()
 
-            # extract full url with id
             try:
-                full_url = bundle["entry"][0]["fullUrl"]
-
-                # retrieve actual value set from full url
-                response = requests.get(full_url, headers=headers)
-                if response.status_code == 200:
-                    value_set = response.json()
-
-                    # extract list of codes
-                    concepts = (
-                        value_set.get("compose", {})
-                        .get("include", [])[0]
-                        .get("concept", [])
-                    )
-                    code_list = [
-                        item.get("code", "no code listed") for item in concepts
-                    ]
-
-                    return code_list
-                else:
-                    print(
-                        f"Failed to retrieve data: {response.status_code} - {response.text}"
-                    )
-                    return []
+                code_list = [item['code'] for item in value_set.get('expansion', {}).get('contains', [])]
+                return code_list
             except IndexError:
                 print("No entries found in bundle.")
                 return []
         else:
             print(
-                f"Failed to retrieve bundle: {bundle_response.status_code} - {bundle_response.text}"
+                f"Failed to retrieve value set: {value_response.status_code} - {value_response.text}"
+            )
+            return []
+
+    @auto_refresh_token
+    def retrieve_refsets_from_megalith(self, url: str) -> Optional[pd.DataFrame]:
+        """
+        Retrieves a list of reference sets that are found in a megalith
+            url: url of the megalith
+        Returns a list of refset codes
+        """
+
+        query_url = f"{self.endpoint}ValueSet/$expand?url={url}"
+
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+
+        # retrieve ref sets
+        mega_response = requests.get(query_url, headers=headers)
+
+        if mega_response.status_code == 200:
+            megalith = mega_response.json()
+            try:
+                display_list = [item['display'] for item in megalith.get('expansion', {}).get('contains', [])]                
+                ref_list = [item['code'] for item in megalith.get('expansion', {}).get('contains', [])]
+
+                df = pd.DataFrame({'display_list': display_list, 'ref_list': ref_list})
+                return df
+            
+            except IndexError:
+                print("No entries found in bundle.")
+                return []
+        else:
+            print(
+                f"Failed to retrieve ref sets: {mega_response.status_code} - {mega_response.text}"
             )
             return []
