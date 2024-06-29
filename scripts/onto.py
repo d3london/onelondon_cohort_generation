@@ -163,9 +163,9 @@ class FHIRTerminologyClient:
     @auto_refresh_token
     def retrieve_refsets_from_megalith(self, url: str) -> Optional[pd.DataFrame]:
         """
-        Retrieves a list of reference sets that are found in a megalith
+        Retrieves all reference sets and their codesets that are found in a megalith.
             url: url of the megalith
-        Returns a list of refset codes
+        Returns a dataframe of refsets, ids, and codes (exploded)
         """
 
         query_url = f"{self.endpoint}ValueSet/$expand?url={url}"
@@ -180,8 +180,19 @@ class FHIRTerminologyClient:
             try:
                 display_list = [item['display'] for item in megalith.get('expansion', {}).get('contains', [])]                
                 ref_list = [item['code'] for item in megalith.get('expansion', {}).get('contains', [])]
+                code_column = []
 
-                df = pd.DataFrame({'display_list': display_list, 'ref_list': ref_list})
+                for refset in ref_list:
+                    ref_url = f'http://snomed.info/xsct/999000011000230102/version/20230705?fhir_vs=refset/{refset}'
+                    
+                    try:
+                        code_list = self.retrieve_concept_codes_from_url(ref_url)    
+                        code_column.append(code_list)
+                    except Exception as e:
+                        code_column.append(f'unable to retrieve: {e}')
+
+                df = pd.DataFrame({'name': display_list, 'refset': ref_list, 'code': code_column})
+                df = df.explode('code').reset_index(drop='True')
                 return df
             
             except IndexError:
