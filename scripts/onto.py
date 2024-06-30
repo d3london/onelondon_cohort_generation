@@ -161,6 +161,36 @@ class FHIRTerminologyClient:
             return []
 
     @auto_refresh_token
+    def retrieve_concept_names_from_url(self, url: str) -> list[Optional[str]]:
+        """
+        Retrieves a list of concept names that are found in a value set via a FHIR url
+            url: contains the FHIR url
+        Returns a list of concept names
+        """
+
+        query_url = f"{self.endpoint}ValueSet/$expand?url={url}"
+
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+
+        # retrieve value_set
+        value_response = requests.get(query_url, headers=headers)
+
+        if value_response.status_code == 200:
+            value_set = value_response.json()
+
+            try:
+                name_list = [item['display'] for item in value_set.get('expansion', {}).get('contains', [])]
+                return name_list
+            except IndexError:
+                print("No entries found in bundle.")
+                return []
+        else:
+            print(
+                f"Failed to retrieve value set: {value_response.status_code} - {value_response.text}"
+            )
+            return []
+
+    @auto_refresh_token
     def retrieve_refsets_from_megalith(self, url: str) -> Optional[pd.DataFrame]:
         """
         Retrieves all reference sets and their codesets that are found in a megalith.
@@ -178,9 +208,14 @@ class FHIRTerminologyClient:
         if mega_response.status_code == 200:
             megalith = mega_response.json()
             try:
+                meganame = megalith.get('name')
+                codeurl = megalith.get('url')
+
                 display_list = [item['display'] for item in megalith.get('expansion', {}).get('contains', [])]                
                 ref_list = [item['code'] for item in megalith.get('expansion', {}).get('contains', [])]
+                
                 code_column = []
+                name_column = []
 
                 for refset in ref_list:
                     ref_url = f'http://snomed.info/xsct/999000011000230102/version/20230705?fhir_vs=refset/{refset}'
@@ -191,8 +226,21 @@ class FHIRTerminologyClient:
                     except Exception as e:
                         code_column.append(f'unable to retrieve: {e}')
 
-                df = pd.DataFrame({'name': display_list, 'refset': ref_list, 'code': code_column})
-                df = df.explode('code').reset_index(drop='True')
+                    try:
+                        name_list = self.retrieve_concept_names_from_url(ref_url)    
+                        name_column.append(name_list)
+                    except Exception as e:
+                        name_column.append(f'unable to retrieve: {e}')                        
+
+                df = pd.DataFrame({'megalith': [meganame] * len(ref_list),
+                                   'url': [codeurl] * len(ref_list),
+                                   'refset_name': display_list,
+                                   'refset_code': ref_list,
+                                   'concept_name': name_column,
+                                   'concept_code': code_column})
+                
+                df = df.explode(['concept_name', 'concept_code']).reset_index(drop='True')
+
                 return df
             
             except IndexError:
